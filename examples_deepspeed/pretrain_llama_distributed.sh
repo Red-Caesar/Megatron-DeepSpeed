@@ -4,18 +4,39 @@ set -ex
 
 ######################################
 # Change the below configurations here
-BASE_PATH=./tmp
-DS_CONFIG=${BASE_PATH}/deepspeed.json
-DATASET_1="./tmp/data/bookcorpus_train_1m_text_sentence"
-DATASET="1 ${DATASET_1}"
-CHECKPOINT_PATH=./tmp
-TOKENIZER_PATH=./tmp/tokenizer.model # offical llama tokenizer.model
+uv pip install sentencepiece setuptools einops deepspeed transformers pybind11 nltk ipython matplotlib
+BASE_PATH=`pwd`
+if [ ! -f "${BASE_PATH}/oscar-1GB.jsonl" ]; then
+  wget https://huggingface.co/bigscience/misc-test-data/resolve/main/stas/oscar-1GB.jsonl.xz
+  xz -d oscar-1GB.jsonl.xz
+fi
+if [ ! -f "${BASE_PATH}/tokenizer.model" ]; then
+  wget https://huggingface.co/NousResearch/Llama-2-7b-hf/resolve/main/tokenizer.model #download tokenizer.model
+fi
+
+TOKENIZER_PATH="${BASE_PATH}/tokenizer.model" # offical llama tokenizer.model
+
+if [ ! -f "${BASE_PATH}/my-llama_text_document.bin" ]; then
+python3 ${BASE_PATH}/tools/preprocess_data.py --input ${BASE_PATH}/oscar-1GB.jsonl \
+  --output-prefix ${BASE_PATH}/my-llama \
+  --dataset-impl mmap \
+  --tokenizer-type GPTSentencePieceTokenizer \
+  --append-eod \
+  --workers 8 \
+  --tokenizer-model $TOKENIZER_PATH
+fi
+
+DS_CONFIG="${BASE_PATH}/deepspeed.json"
+DATASET="${BASE_PATH}/my-llama_text_document"
+CHECKPOINT_PATH="${BASE_PATH}/checkpoint/"
+mkdir -p checkpoint
+
 
 TP=2
 PP=2
 ZERO_STAGE=0
 
-GPUS_PER_NODE=8
+GPUS_PER_NODE=1
 MASTER_ADDR=localhost
 MASTER_PORT=6000
 NNODES=1
@@ -28,11 +49,11 @@ NUM_HEADS=16 # e.g. llama-13b: 40
 SEQ_LENGTH=2048
 
 MICRO_BATCH_SIZE=4
-GLOBAL_BATCH_SIZE=32 # e.g. llama: 4M tokens
-TRAIN_STEPS=250000 # e.g. llama: 1T tokens / 4M tokens_per_batch = 250000 steps
+GLOBAL_BATCH_SIZE=16 # e.g. llama: 4M tokens
+TRAIN_STEPS=32 # e.g. llama: 1T tokens / 4M tokens_per_batch = 250000 steps
 LR=3e-4
 MIN_LR=3e-5
-LR_WARMUP_STEPS=2000
+LR_WARMUP_STEPS=16
 WEIGHT_DECAY=0.1
 GRAD_CLIP=1
 
@@ -49,7 +70,7 @@ activation_checkpoint="false"
 # --swiglu \
 # --normalization rmsnorm \
 # --disable-bias-linear \
-######################################
+####################################
 
 
 
